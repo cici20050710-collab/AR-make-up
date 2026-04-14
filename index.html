@@ -1,57 +1,275 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 虛擬試妝 AR</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 虛擬試妝 AR</title>
 
-    <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css">
 </head>
 
 <body class="bg-pink-50">
-    <nav class="p-4 text-center bg-white shadow">
-        <h1 class="text-xl font-bold text-pink-600">AI Beauty Try-On AR</h1>
-    </nav>
 
-    <main class="max-w-4xl mx-auto p-4">
-        <div id="step-start" class="text-center py-20">
-            <button onclick="startCamera()" class="bg-pink-500 text-white px-6 py-3 rounded-full">
-                開始試妝
-            </button>
-        </div>
+<nav class="p-4 text-center bg-white shadow">
+<h1 class="text-xl font-bold text-pink-600">AI Beauty Try-On AR</h1>
+</nav>
 
-        <div id="step-main" class="hidden grid md:grid-cols-3 gap-4">
-            <div class="space-y-4">
-                <div class="bg-white p-3 rounded shadow">
-                    <h3 class="font-bold">類別</h3>
-                    <button id="btn-base" onclick="select('底妝')">底妝</button>
-                    <button id="btn-eye" onclick="select('眼妝')" class="active-btn">眼妝</button>
-                    <button id="btn-lip" onclick="select('唇妝')">唇妝</button>
-                </div>
+<main class="max-w-4xl mx-auto p-4">
 
-                <div class="bg-white p-3 rounded shadow">
-                    <h3 class="font-bold">AI推薦</h3>
-                    <div id="ai"></div>
-                </div>
+<!-- start -->
+<div id="step-start" class="text-center py-20">
+<button onclick="startCamera()" class="bg-pink-500 text-white px-6 py-3 rounded-full">
+開始試妝
+</button>
+</div>
 
-                <div class="bg-white p-3 rounded shadow">
-                    <h3 class="font-bold">產品</h3>
-                    <div id="products"></div>
-                </div>
-            </div>
+<!-- main -->
+<div id="step-main" class="hidden grid md:grid-cols-3 gap-4">
 
-            <div class="md:col-span-2">
-                <div class="camera-box">
-                    <video id="video" autoplay playsinline muted></video>
-                    <canvas id="canvas"></canvas>
-                </div>
-            </div>
-        </div>
-    </main>
+<!-- left -->
+<div class="space-y-4">
 
-    <script src="script.js"></script>
+<div class="bg-white p-3 rounded shadow">
+<h3 class="font-bold">類別</h3>
+<button id="btn-base" onclick="select('底妝')">底妝</button>
+<button id="btn-eye" onclick="select('眼妝')" class="active-btn">眼妝</button>
+<button id="btn-lip" onclick="select('唇妝')">唇妝</button>
+</div>
+
+<div class="bg-white p-3 rounded shadow">
+<h3 class="font-bold">AI推薦</h3>
+<div id="ai"></div>
+</div>
+
+<div class="bg-white p-3 rounded shadow">
+<h3 class="font-bold">產品</h3>
+<div id="products"></div>
+</div>
+
+</div>
+
+<!-- right -->
+<div class="md:col-span-2">
+<div class="camera-box">
+<video id="video" autoplay playsinline></video>
+<canvas id="canvas"></canvas>
+</div>
+</div>
+
+</div>
+
+</main>
+
+<script>
+let current = "眼妝";
+let selectedColor = "#ff0040";
+let canvas, ctx;
+let lastLm = null;
+
+// ------------------ 類別 ------------------
+function select(c){
+    current = c;
+
+    ["btn-base","btn-eye","btn-lip"].forEach(id=>{
+        document.getElementById(id).classList.remove("active-btn");
+    });
+
+    if(c==="底妝") btn("btn-base");
+    if(c==="眼妝") btn("btn-eye");
+    if(c==="唇妝") btn("btn-lip");
+
+    renderProducts();
+}
+
+function btn(id){
+    document.getElementById(id).classList.add("active-btn");
+}
+
+// ------------------ 產品 ------------------
+const db = {
+"唇妝":[
+    {name:"Dior 999",color:"#b3003c"},
+    {name:"YSL 12",color:"#d98c8c"},
+    {name:"MAC Chili",color:"#c21807"}
+],
+"眼妝":[
+    {name:"3CE",color:"#d6a77a"},
+    {name:"NARS",color:"#8b5e3c"}
+],
+"底妝":[
+    {name:"LANCOME",color:"#f2c7a5"}
+]
+};
+
+function renderProducts(){
+    let box = document.getElementById("products");
+    box.innerHTML = "";
+
+    db[current].forEach(p=>{
+        let div = document.createElement("div");
+        div.className = "product";
+
+        div.innerHTML = `
+        <div style="width:18px;height:18px;background:${p.color};margin-right:8px;"></div>
+        ${p.name}
+        `;
+
+        div.onclick = ()=>{
+            selectedColor = p.color;
+        };
+
+        box.appendChild(div);
+    });
+}
+
+// ------------------ 開鏡頭 ------------------
+async function startCamera(){
+    const video = document.getElementById("video");
+    canvas = document.getElementById("canvas");
+    ctx = canvas.getContext("2d");
+
+    const stream = await navigator.mediaDevices.getUserMedia({video: true});
+    video.srcObject = stream;
+
+    const faceMesh = new FaceMesh({
+        locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+    });
+
+    faceMesh.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+    });
+
+    faceMesh.onResults(onResults);
+
+    const cam = new Camera(video, {
+        onFrame: async () => await faceMesh.send({image: video})
+    });
+
+    cam.start();
+
+    document.getElementById("step-start").classList.add("hidden");
+    document.getElementById("step-main").classList.remove("hidden");
+
+    renderProducts();
+}
+
+// ------------------ AR主循環 ------------------
+function onResults(res){
+    const video = document.getElementById("video");
+
+    if (video.videoWidth && video.videoHeight) {
+        if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+        }
+    }
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if(!res.multiFaceLandmarks || res.multiFaceLandmarks.length === 0) return;
+
+    lastLm = res.multiFaceLandmarks[0];
+
+    draw(lastLm);
+    ai(lastLm);
+}
+
+// ------------------ 上妝 ------------------
+function draw(lm){
+    ctx.globalAlpha = 1;
+    let c = selectedColor;
+
+    // 唇妝
+    if(current === "唇妝"){
+        ctx.globalAlpha = 0.75;
+        ctx.fillStyle = c;
+        drawSmoothArea([
+            61, 185, 40, 39, 37, 0, 267, 269, 270, 409,
+            291, 375, 321, 405, 314, 17, 84, 181, 91, 146
+        ], lm);
+    }
+
+    // 眼妝
+    if(current === "眼妝"){
+        ctx.fillStyle = c;
+
+        // 左眼影
+        ctx.globalAlpha = 0.35;
+        drawSmoothArea([
+            33, 246, 161, 160, 159, 158, 157, 173,
+            133, 155, 154, 153, 145, 144, 163, 7
+        ], lm);
+
+        // 右眼影
+        ctx.globalAlpha = 0.35;
+        drawSmoothArea([
+            362, 398, 384, 385, 386, 387, 388, 466,
+            263, 249, 390, 373, 374, 380, 381, 382
+        ], lm);
+    }
+
+    // 底妝
+    if(current === "底妝"){
+        ctx.globalAlpha = 0.18;
+        ctx.fillStyle = c;
+        drawSmoothArea([
+            10, 338, 297, 332, 284, 251, 389, 356, 454, 323,
+            361, 288, 397, 365, 379, 378, 400, 377, 152, 148,
+            176, 149, 150, 136, 172, 58, 132, 93, 234, 127,
+            162, 21, 54, 103, 67, 109
+        ], lm);
+    }
+
+    ctx.globalAlpha = 1;
+}
+
+// ------------------ 畫區域 ------------------
+function drawSmoothArea(arr, lm){
+    ctx.beginPath();
+
+    arr.forEach((i, idx) => {
+        let p = lm[i];
+        let x = p.x * canvas.width;
+        let y = p.y * canvas.height;
+
+        if(idx === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    });
+
+    ctx.closePath();
+    ctx.fill();
+}
+
+// ------------------ AI ------------------
+function ai(lm){
+    let p = lm[1];
+    let x = Math.max(0, Math.min(canvas.width - 1, Math.floor(p.x * canvas.width)));
+    let y = Math.max(0, Math.min(canvas.height - 1, Math.floor(p.y * canvas.height)));
+
+    let d = ctx.getImageData(x, y, 1, 1).data;
+    let b = (d[0] + d[1] + d[2]) / 3;
+
+    let tone = "自然";
+
+    if(b > 180) tone = "白皙";
+    if(b < 120) tone = "健康";
+
+    let r = "";
+
+    if(current === "唇妝") r = "Dior / YSL";
+    if(current === "眼妝") r = "3CE 大地色";
+    if(current === "底妝") r = "裸妝粉底";
+
+    document.getElementById("ai").innerText =
+    `膚色:${tone}\n推薦:${r}`;
+}
+</script>
+
 </body>
 </html>
