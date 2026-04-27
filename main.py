@@ -9,13 +9,13 @@ app = FastAPI()
 # ✅ 允許你的前端來源（部署後請換成你的實際網址）
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # 上線後改成 ["https://你的前端網址.com"]
+    allow_origins=["https://ar-make-up-1.onrender.com"],   # 上線後改成 ["https://你的前端網址.com"]
     allow_methods=["POST"],
     allow_headers=["Content-Type"],
 )
 
 # ✅ API Key 從環境變數讀取，不寫死在程式碼裡
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+GEMINI_API_KEY = os.environ.get("AIzaSyBsKP6phH-wdDa2vdPgvS2qNxkei2SqOMM")
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
 
