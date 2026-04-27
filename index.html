@@ -167,7 +167,8 @@
     var aiPanel        = document.getElementById('ai-result-panel');
     var aiText         = document.getElementById('ai-analysis-text');
 
-    
+    // ✅ 後端 Proxy 網址 — 部署到 Render 後換成你的實際網址
+    var BACKEND_URL = "https://ar-make-up-1.onrender.com";
     var showMakeup = true;
     var showGuides = false;
 
@@ -249,15 +250,10 @@
             tempCtx.drawImage(videoElement, 0, 0, tempCanvas.width, tempCanvas.height);
             var base64Image = tempCanvas.toDataURL('image/jpeg', 0.7).split(',')[1];
 
-            var lipList  = JSON.stringify(lipColors.map(function(l){ return {id:l.id,name:l.name}; }));
-            var eyeList  = JSON.stringify(eyeColors.map(function(l){ return {id:l.id,name:l.name}; }));
-            var baseList = JSON.stringify(baseColors.map(function(l){ return {id:l.id,name:l.name}; }));
-            var systemPrompt = "You are a professional makeup AI. Analyze the user skin tone and face. Pick ONE from each list. Lip list: " + lipList + ". Eye list: " + eyeList + ". Base list: " + baseList + ". Return ONLY JSON with keys: skin_tone, face_shape, recommended_lip_id, recommended_eye_id, recommended_base_id, advice. No markdown, no extra text.";
-
             var retries = 0; var finalData = null;
             while (retries < 3 && !finalData) {
                 try {
-                    var response = await fetch("https://ar-make-up-1.onrender.com", {
+                    var response = await fetch(BACKEND_URL, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -269,10 +265,10 @@
                     });
                     if (!response.ok) {
                         if (response.status === 429 || response.status === 503) { retries++; await new Promise(function(r){ setTimeout(r, 2000*retries); }); continue; }
-                        throw new Error("API error " + response.status);
+                        throw new Error("後端錯誤 " + response.status);
                     }
                     var result = await response.json();
-                    var txt = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                    var txt = result.candidates && result.candidates[0] && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts[0] && result.candidates[0].content.parts[0].text;
                     if (txt) { finalData = tryExtractJson(txt); if (finalData) break; }
                     retries++;
                 } catch(e) { retries++; await new Promise(function(r){ setTimeout(r, 1000*retries); }); }
