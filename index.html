@@ -253,7 +253,7 @@
             var retries = 0; var finalData = null;
             while (retries < 3 && !finalData) {
                 try {
-                    var response = await fetch(BACKEND_URL, {
+                    var response = await fetch(BACKEND_URL + "/api/analyze", {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
