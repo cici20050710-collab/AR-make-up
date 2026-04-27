@@ -167,7 +167,7 @@
     var aiPanel        = document.getElementById('ai-result-panel');
     var aiText         = document.getElementById('ai-analysis-text');
 
-    var apiKey = "AIzaSyB4q6e7xlc9LFluhpkuzXXdrRfSn4tGPb8";
+    
     var showMakeup = true;
     var showGuides = false;
 
@@ -257,16 +257,14 @@
             var retries = 0; var finalData = null;
             while (retries < 3 && !finalData) {
                 try {
-                    var response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey, {
+                    var response = await fetch("https://ar-make-up.onrender.com", {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            systemInstruction: { parts: [{ text: systemPrompt }] },
-                            contents: [{ parts: [
-                                { text: "Analyze my face and recommend colors. Return only JSON." },
-                                { inlineData: { mimeType: "image/jpeg", data: base64Image } }
-                            ]}],
-                            generationConfig: { temperature: 0.1, maxOutputTokens: 300 }
+                            base64Image: base64Image,
+                            lipList:  lipColors.map(function(l){ return {id:l.id, name:l.name}; }),
+                            eyeList:  eyeColors.map(function(l){ return {id:l.id, name:l.name}; }),
+                            baseList: baseColors.map(function(l){ return {id:l.id, name:l.name}; })
                         })
                     });
                     if (!response.ok) {
@@ -274,7 +272,7 @@
                         throw new Error("API error " + response.status);
                     }
                     var result = await response.json();
-                    var txt = result.candidates && result.candidates[0] && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts[0] && result.candidates[0].content.parts[0].text;
+                    var txt = result.candidates?.[0]?.content?.parts?.[0]?.text;
                     if (txt) { finalData = tryExtractJson(txt); if (finalData) break; }
                     retries++;
                 } catch(e) { retries++; await new Promise(function(r){ setTimeout(r, 1000*retries); }); }
