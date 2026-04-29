@@ -6,20 +6,21 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-# ✅ 允許你的前端來源（部署後請換成你的實際網址）
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://cici20050710-collab.github.io"
+    ],
     allow_methods=["POST", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
-# ✅ API Key 從環境變數讀取，不寫死在程式碼裡
+
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
 
 class AnalyzeRequest(BaseModel):
-    base64Image: str      # 前端傳來的 base64 圖片
+    base64Image: str
     lipList: list
     eyeList: list
     baseList: list
@@ -49,7 +50,13 @@ async def analyze(req: AnalyzeRequest):
                 {"inline_data": {"mime_type": "image/jpeg", "data": req.base64Image}}
             ]
         }],
-        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 300}
+        "generationConfig": {
+            "temperature": 0.1,
+            "maxOutputTokens": 1024,       # ✅ 從 300 提高到 1024
+            "thinkingConfig": {
+                "thinkingBudget": 0        # ✅ 關閉 thinking，避免 token 被耗盡
+            }
+        }
     }
 
     async with httpx.AsyncClient(timeout=30) as client:
