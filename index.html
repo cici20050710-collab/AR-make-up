@@ -355,34 +355,52 @@
         canvasCtx.restore();
     }
 
+    // ✅ 底妝：用獨立 offscreen canvas 先畫好再合成，避免圖層破損
     function drawBase(lm, W, H, hexColor) {
         var rgb = hexToRgb(hexColor);
-        var off = document.createElement('canvas');
-        off.width = W; off.height = H;
-        var ctx = off.getContext('2d');
-        ctx.save();
-        ctx.filter = 'blur(20px)';
-        ctx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.18)';
-        tracePath(ctx, FACE_OVAL.map(function(i){ return lm[i]; }), W, H);
-        ctx.fill();
-        ctx.restore();
-        ctx.save();
-        ctx.globalCompositeOperation = 'destination-out';
-        ctx.filter = 'blur(12px)';
-        ctx.fillStyle = 'rgba(0,0,0,1)';
-        tracePath(ctx, LEFT_EYE_REGION.map(function(i){ return lm[i]; }), W, H);
-        ctx.fill();
-        tracePath(ctx, RIGHT_EYE_REGION.map(function(i){ return lm[i]; }), W, H);
-        ctx.fill();
-        ctx.restore();
+
+        // 第一層 offscreen：畫臉部底妝色
+        var faceOff = document.createElement('canvas');
+        faceOff.width = W; faceOff.height = H;
+        var fCtx = faceOff.getContext('2d');
+        fCtx.save();
+        fCtx.filter = 'blur(18px)';
+        fCtx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',1)';
+        tracePath(fCtx, FACE_OVAL.map(function(i){ return lm[i]; }), W, H);
+        fCtx.fill();
+        fCtx.restore();
+
+        // 第二層 offscreen：挖掉眼睛區域（destination-out 只影響自己的 offscreen）
+        var maskOff = document.createElement('canvas');
+        maskOff.width = W; maskOff.height = H;
+        var mCtx = maskOff.getContext('2d');
+        mCtx.drawImage(faceOff, 0, 0);
+        mCtx.save();
+        mCtx.globalCompositeOperation = 'destination-out';
+        mCtx.filter = 'blur(14px)';
+        mCtx.fillStyle = 'rgba(0,0,0,1)';
+        tracePath(mCtx, LEFT_EYE_REGION.map(function(i){ return lm[i]; }), W, H);
+        mCtx.fill();
+        tracePath(mCtx, RIGHT_EYE_REGION.map(function(i){ return lm[i]; }), W, H);
+        mCtx.fill();
+        mCtx.restore();
+
+        // 合成到主畫布：用 soft-light 自然融合膚色
         canvasCtx.save();
         canvasCtx.globalCompositeOperation = 'soft-light';
-        canvasCtx.globalAlpha = 0.6;
-        canvasCtx.drawImage(off, 0, 0);
+        canvasCtx.globalAlpha = 0.45;
+        canvasCtx.drawImage(maskOff, 0, 0);
+        canvasCtx.restore();
+
+        // 再疊一層 multiply 增加色彩飽和感，讓底妝色更明顯
+        canvasCtx.save();
+        canvasCtx.globalCompositeOperation = 'multiply';
+        canvasCtx.globalAlpha = 0.12;
+        canvasCtx.drawImage(maskOff, 0, 0);
         canvasCtx.restore();
     }
 
-    // ✅ 透明度調低，只蓋眼皮範圍，自然不搶眼
+    // ✅ 眼妝：漸層暈染，模擬從眼線向外擴散的效果
     function drawEye(lm, W, H, hexColor) {
         var rgb = hexToRgb(hexColor);
         var regions = [
@@ -390,49 +408,103 @@
             RIGHT_EYE_SHADOW.map(function(i){ return lm[i]; })
         ];
         regions.forEach(function(pts) {
+            // 計算眼皮中心點
+            var cx = pts.reduce(function(s,p){ return s + p.x*W; }, 0) / pts.length;
+            var cy = pts.reduce(function(s,p){ return s + p.y*H; }, 0) / pts.length;
+            var r  = Math.max.apply(null, pts.map(function(p){
+                return Math.sqrt(Math.pow(p.x*W-cx,2)+Math.pow(p.y*H-cy,2));
+            })) * 1.6;
+
+            // 用 offscreen + clip 讓模糊不超出眼皮範圍
+            var eyeOff = document.createElement('canvas');
+            eyeOff.width = W; eyeOff.height = H;
+            var eCtx = eyeOff.getContext('2d');
+
+            // 漸層：從中心濃到邊緣淡
+            var grad = eCtx.createRadialGradient(cx, cy, 0, cx, cy, r);
+            grad.addColorStop(0,   'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.55)');
+            grad.addColorStop(0.5, 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.30)');
+            grad.addColorStop(1,   'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0)');
+
+            eCtx.save();
+            eCtx.filter = 'blur(10px)';
+            tracePath(eCtx, pts, W, H);
+            eCtx.clip();
+            eCtx.fillStyle = grad;
+            eCtx.fillRect(0, 0, W, H);
+            eCtx.restore();
+
+            // 再疊一層更模糊的外暈
+            eCtx.save();
+            eCtx.filter = 'blur(20px)';
+            eCtx.globalAlpha = 0.35;
+            eCtx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',1)';
+            tracePath(eCtx, pts, W, H);
+            eCtx.fill();
+            eCtx.restore();
+
             canvasCtx.save();
-            canvasCtx.filter = 'blur(16px)';
             canvasCtx.globalCompositeOperation = 'multiply';
-            canvasCtx.globalAlpha = 0.22;
-            canvasCtx.fillStyle = 'rgb(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ')';
-            tracePath(canvasCtx, pts, W, H);
-            canvasCtx.fill();
-            canvasCtx.restore();
-            canvasCtx.save();
-            canvasCtx.filter = 'blur(6px)';
-            canvasCtx.globalCompositeOperation = 'multiply';
-            canvasCtx.globalAlpha = 0.15;
-            canvasCtx.fillStyle = 'rgb(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ')';
-            tracePath(canvasCtx, pts, W, H);
-            canvasCtx.fill();
+            canvasCtx.globalAlpha = 0.85;
+            canvasCtx.drawImage(eyeOff, 0, 0);
             canvasCtx.restore();
         });
     }
 
+    // ✅ 唇妝：overlay 混合 + 光澤感高光
     function drawLips(lm, W, H, hexColor) {
         var rgb = hexToRgb(hexColor);
+        var allPts = UPPER_LIP.concat(LOWER_LIP).map(function(i){ return lm[i]; });
         var parts = [
             UPPER_LIP.map(function(i){ return lm[i]; }),
             LOWER_LIP.map(function(i){ return lm[i]; })
         ];
+
+        // 嘴唇中心（用於高光漸層）
+        var cx = allPts.reduce(function(s,p){ return s + p.x*W; }, 0) / allPts.length;
+        var cy = allPts.reduce(function(s,p){ return s + p.y*H; }, 0) / allPts.length;
+
+        var lipOff = document.createElement('canvas');
+        lipOff.width = W; lipOff.height = H;
+        var lCtx = lipOff.getContext('2d');
+
+        // 底色：完整唇形，邊緣稍微模糊
         parts.forEach(function(pts) {
-            canvasCtx.save();
-            canvasCtx.filter = 'blur(2px)';
-            canvasCtx.globalCompositeOperation = 'multiply';
-            canvasCtx.globalAlpha = 0.6;
-            canvasCtx.fillStyle = 'rgb(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ')';
-            tracePath(canvasCtx, pts, W, H);
-            canvasCtx.fill();
-            canvasCtx.restore();
-            canvasCtx.save();
-            canvasCtx.filter = 'blur(6px)';
-            canvasCtx.globalCompositeOperation = 'multiply';
-            canvasCtx.globalAlpha = 0.22;
-            canvasCtx.fillStyle = 'rgb(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ')';
-            tracePath(canvasCtx, pts, W, H);
-            canvasCtx.fill();
-            canvasCtx.restore();
+            lCtx.save();
+            lCtx.filter = 'blur(2.5px)';
+            lCtx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.92)';
+            tracePath(lCtx, pts, W, H);
+            lCtx.fill();
+            lCtx.restore();
         });
+
+        // 高光：嘴唇中央偏上的白色漸層，模擬光澤感
+        var gloss = lCtx.createRadialGradient(cx, cy - 4, 0, cx, cy - 4, 28);
+        gloss.addColorStop(0,   'rgba(255,255,255,0.28)');
+        gloss.addColorStop(0.5, 'rgba(255,255,255,0.10)');
+        gloss.addColorStop(1,   'rgba(255,255,255,0)');
+        lCtx.save();
+        lCtx.globalCompositeOperation = 'screen';
+        lCtx.fillStyle = gloss;
+        parts.forEach(function(pts) {
+            tracePath(lCtx, pts, W, H);
+            lCtx.fill();
+        });
+        lCtx.restore();
+
+        // 合成：overlay 讓顏色和皮膚自然融合，不會死板
+        canvasCtx.save();
+        canvasCtx.globalCompositeOperation = 'overlay';
+        canvasCtx.globalAlpha = 0.75;
+        canvasCtx.drawImage(lipOff, 0, 0);
+        canvasCtx.restore();
+
+        // 再補一層 multiply 加深色彩
+        canvasCtx.save();
+        canvasCtx.globalCompositeOperation = 'multiply';
+        canvasCtx.globalAlpha = 0.40;
+        canvasCtx.drawImage(lipOff, 0, 0);
+        canvasCtx.restore();
     }
 
     function drawProportionGuides(lm, W, H) {
