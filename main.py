@@ -9,9 +9,7 @@ app = FastAPI()
 # ✅ 允許你的前端來源（部署後請換成你的實際網址）
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://cici20050710-collab.github.io"
-    ],
+    allow_origins=["*"],
     allow_methods=["POST", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
