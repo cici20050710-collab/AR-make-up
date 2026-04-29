@@ -240,7 +240,10 @@
             scanBar.style.display = 'block';
             aiPanel.classList.remove('hidden');
             aiText.innerText = "智慧分析推薦中，請稍候...";
-
+// 在 var targetWidth = 480; 前面加上
+    if (!videoElement.videoWidth || videoElement.videoWidth === 0) {
+         throw new Error("鏡頭尚未就緒，請稍後再試");
+}
             var targetWidth = 480;
             var scale = targetWidth / videoElement.videoWidth;
             var tempCanvas = document.createElement('canvas');
