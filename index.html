@@ -234,16 +234,32 @@
         }
     }
 
+    // ✅ 冷卻時間控制，避免連按耗盡配額
+    var lastAnalyzeTime = 0;
+    var COOLDOWN_MS = 15000; // 15 秒冷卻
+
     async function performAIAnalysis() {
+        // ✅ 冷卻時間檢查
+        var now = Date.now();
+        var elapsed = now - lastAnalyzeTime;
+        if (elapsed < COOLDOWN_MS) {
+            var wait = Math.ceil((COOLDOWN_MS - elapsed) / 1000);
+            aiPanel.classList.remove('hidden');
+            aiText.innerText = "請等待 " + wait + " 秒後再次分析";
+            return;
+        }
+
         try {
             analyzeBtn.disabled = true;
             scanBar.style.display = 'block';
             aiPanel.classList.remove('hidden');
             aiText.innerText = "智慧分析推薦中，請稍候...";
-// 在 var targetWidth = 480; 前面加上
-    if (!videoElement.videoWidth || videoElement.videoWidth === 0) {
-         throw new Error("鏡頭尚未就緒，請稍後再試");
-}
+
+            // ✅ 鏡頭就緒檢查
+            if (!videoElement.videoWidth || videoElement.videoWidth === 0) {
+                throw new Error("鏡頭尚未就緒，請稍後再試");
+            }
+
             var targetWidth = 480;
             var scale = targetWidth / videoElement.videoWidth;
             var tempCanvas = document.createElement('canvas');
@@ -253,29 +269,30 @@
             tempCtx.drawImage(videoElement, 0, 0, tempCanvas.width, tempCanvas.height);
             var base64Image = tempCanvas.toDataURL('image/jpeg', 0.7).split(',')[1];
 
-            var retries = 0; var finalData = null;
-            while (retries < 3 && !finalData) {
-                try {
-                    var response = await fetch(BACKEND_URL + "/api/analyze", {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            base64Image: base64Image,
-                            lipList:  lipColors.map(function(l){ return {id:l.id, name:l.name}; }),
-                            eyeList:  eyeColors.map(function(l){ return {id:l.id, name:l.name}; }),
-                            baseList: baseColors.map(function(l){ return {id:l.id, name:l.name}; })
-                        })
-                    });
-                    if (!response.ok) {
-                        if (response.status === 429 || response.status === 503) { retries++; await new Promise(function(r){ setTimeout(r, 2000*retries); }); continue; }
-                        throw new Error("後端錯誤 " + response.status);
-                    }
-                    var result = await response.json();
-                    var txt = result.candidates && result.candidates[0] && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts[0] && result.candidates[0].content.parts[0].text;
-                    if (txt) { finalData = tryExtractJson(txt); if (finalData) break; }
-                    retries++;
-                } catch(e) { retries++; await new Promise(function(r){ setTimeout(r, 1000*retries); }); }
+            lastAnalyzeTime = Date.now(); // ✅ 記錄呼叫時間
+
+            // ✅ 移除重試邏輯，失敗直接告知，不浪費配額
+            var finalData = null;
+            var response = await fetch(BACKEND_URL + "/api/analyze", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    base64Image: base64Image,
+                    lipList:  lipColors.map(function(l){ return {id:l.id, name:l.name}; }),
+                    eyeList:  eyeColors.map(function(l){ return {id:l.id, name:l.name}; }),
+                    baseList: baseColors.map(function(l){ return {id:l.id, name:l.name}; })
+                })
+            });
+
+            if (!response.ok) {
+                if (response.status === 429) throw new Error("請求太頻繁，請等待 1 分鐘後再試");
+                if (response.status === 503) throw new Error("伺服器暫時無法使用，請稍後再試");
+                throw new Error("後端錯誤 " + response.status);
             }
+
+            var result = await response.json();
+            var txt = result.candidates && result.candidates[0] && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts[0] && result.candidates[0].content.parts[0].text;
+            if (txt) finalData = tryExtractJson(txt);
 
             if (!finalData) throw new Error("解析失敗，請重試");
 
