@@ -212,12 +212,8 @@
     var RIGHT_EYE_REGION = [463,414,286,258,257,259,260,467,446,362,398,384,385,386,387,388,466,263,249,390,373,374,380,381,382];
 
     // ✅ 縮小到只有眼皮範圍，不蓋眉毛
-    // ✅ 只取上眼皮點位（眼皮不含眼白、不含下眼瞼）
-    var LEFT_EYE_SHADOW  = [33,246,161,160,159,158,157,173,133];
-    var RIGHT_EYE_SHADOW = [263,466,388,387,386,385,384,398,362];
-    // ✅ 眉毛下方到眼皮的延伸區（眼影暈染範圍，比眼皮略大）
-    var LEFT_EYE_LID   = [226,247,30,29,27,28,56,190,243,133,173,157,158,159,160,161,246,33];
-    var RIGHT_EYE_LID  = [463,414,286,258,257,259,260,467,446,362,398,384,385,386,387,388,466,263];
+    var LEFT_EYE_SHADOW  = [33,246,161,160,159,158,157,173,133,155,154,153,145,144,163,7];
+    var RIGHT_EYE_SHADOW = [263,466,388,387,386,385,384,398,362,382,381,380,374,373,390,249];
 
     function hexToRgb(hex) {
         return { r: parseInt(hex.slice(1,3),16), g: parseInt(hex.slice(3,5),16), b: parseInt(hex.slice(5,7),16) };
@@ -389,46 +385,64 @@
     // ✅ 透明度調低，只蓋眼皮範圍，自然不搶眼
     function drawEye(lm, W, H, hexColor) {
         var rgb = hexToRgb(hexColor);
-        var lidPairs = [
+        var pairs = [
             { lid: LEFT_EYE_LID.map(function(i){ return lm[i]; }),
               shadow: LEFT_EYE_SHADOW.map(function(i){ return lm[i]; }) },
             { lid: RIGHT_EYE_LID.map(function(i){ return lm[i]; }),
               shadow: RIGHT_EYE_SHADOW.map(function(i){ return lm[i]; }) }
         ];
-        lidPairs.forEach(function(pair) {
+        pairs.forEach(function(pair) {
+            // 計算眼皮中心與邊界，用於漸層定位
+            var pts = pair.shadow;
+            var minY = Math.min.apply(null, pts.map(function(p){ return p.y * H; }));
+            var maxY = Math.max.apply(null, pts.map(function(p){ return p.y * H; }));
+            var minX = Math.min.apply(null, pts.map(function(p){ return p.x * W; }));
+            var maxX = Math.max.apply(null, pts.map(function(p){ return p.x * W; }));
+            var cx = (minX + maxX) / 2;
+
             var eyeOff = document.createElement('canvas');
             eyeOff.width = W; eyeOff.height = H;
             var eCtx = eyeOff.getContext('2d');
 
-            // 第1層：大範圍暈染（眉骨到眼皮）
+            // === 第1層：眼皮主色（精準 clip，飽和顯色）===
             eCtx.save();
-            eCtx.filter = 'blur(14px)';
-            eCtx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.55)';
+            tracePath(eCtx, pair.shadow, W, H);
+            eCtx.clip();
+            eCtx.filter = 'blur(2px)';
+            eCtx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.9)';
+            eCtx.fillRect(0, 0, W, H);
+            eCtx.restore();
+
+            // === 第2層：往眉骨方向的漸層暈染（由深到透明）===
+            // 用垂直漸層：眼皮上緣（maxY）濃，往上（minY - 暈染距離）淡出到透明
+            var spreadUp = (maxY - minY) * 2.2; // 往上暈染的距離
+            var gradTop = minY - spreadUp;
+            var grad = eCtx.createLinearGradient(cx, maxY, cx, gradTop);
+            grad.addColorStop(0,    'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.55)');
+            grad.addColorStop(0.35, 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.30)');
+            grad.addColorStop(0.65, 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.10)');
+            grad.addColorStop(1,    'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0)');
+
+            eCtx.save();
+            eCtx.filter = 'blur(8px)';
+            tracePath(eCtx, pair.lid, W, H);
+            eCtx.clip();
+            eCtx.fillStyle = grad;
+            eCtx.fillRect(0, 0, W, H);
+            eCtx.restore();
+
+            // === 第3層：外緣超大模糊，讓邊界完全消失 ===
+            eCtx.save();
+            eCtx.filter = 'blur(22px)';
+            eCtx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.30)';
             tracePath(eCtx, pair.lid, W, H);
             eCtx.fill();
             eCtx.restore();
 
-            // 第2層：clip 到上眼皮範圍，精準上色
-            eCtx.save();
-            tracePath(eCtx, pair.shadow, W, H);
-            eCtx.clip();
-            eCtx.filter = 'blur(3px)';
-            eCtx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.88)';
-            eCtx.fillRect(0, 0, W, H);
-            eCtx.restore();
-
-            // 第3層：眼皮內緣加深
-            eCtx.save();
-            eCtx.filter = 'blur(2px)';
-            eCtx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.55)';
-            tracePath(eCtx, pair.shadow, W, H);
-            eCtx.fill();
-            eCtx.restore();
-
-            // 合成：multiply 融合膚色，顯色不假
+            // 合成到主畫布
             canvasCtx.save();
             canvasCtx.globalCompositeOperation = 'multiply';
-            canvasCtx.globalAlpha = 0.72;
+            canvasCtx.globalAlpha = 0.80;
             canvasCtx.drawImage(eyeOff, 0, 0);
             canvasCtx.restore();
         });
