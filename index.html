@@ -173,10 +173,10 @@
     var showGuides = false;
 
     var lipColors = [
-        { id: 'l1', name: '玫瑰裸粉', color: '#DCACAC', price: 360, subtitle: 'Rose Nude' },
-        { id: 'l2', name: '豆沙磚紅', color: '#C78F8F', price: 360, subtitle: 'Brick Rose' },
-        { id: 'l3', name: '奶茶橘棕', color: '#D68461', price: 360, subtitle: 'Latte Brown' },
-        { id: 'l4', name: '草莓果醬', color: '#D57B90', price: 390, subtitle: 'Berry Mauve' },
+        { id: 'l1', name: '玫瑰裸粉', color: '#C8847A', price: 360, subtitle: 'Rose Nude' },
+        { id: 'l2', name: '豆沙磚紅', color: '#A0514A', price: 360, subtitle: 'Brick Rose' },
+        { id: 'l3', name: '奶茶橘棕', color: '#B8795A', price: 360, subtitle: 'Latte Brown' },
+        { id: 'l4', name: '莓果紫紅', color: '#8B3A52', price: 390, subtitle: 'Berry Mauve' },
         { id: 'l5', name: '珊瑚橘紅', color: '#C96448', price: 360, subtitle: 'Coral Red' },
         { id: 'l6', name: '霧感正紅', color: '#B03030', price: 390, subtitle: 'Matte Red' },
         { id: 'l7', name: '乾燥玫瑰', color: '#9E6060', price: 360, subtitle: 'Dry Rose' }
@@ -357,35 +357,32 @@
 
     function drawBase(lm, W, H, hexColor) {
         var rgb = hexToRgb(hexColor);
-        // 用兩層 offscreen 解決 destination-out 汙染主畫布的問題
         var off = document.createElement('canvas');
         off.width = W; off.height = H;
         var ctx = off.getContext('2d');
-        // 1. 畫臉部底色（透明度低，自然融合）
         ctx.save();
-        ctx.filter = 'blur(22px)';
-        ctx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.55)';
+        ctx.filter = 'blur(20px)';
+        ctx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.18)';
         tracePath(ctx, FACE_OVAL.map(function(i){ return lm[i]; }), W, H);
         ctx.fill();
         ctx.restore();
-        // 2. 在 offscreen 挖眼睛（不影響主畫布）
         ctx.save();
         ctx.globalCompositeOperation = 'destination-out';
-        ctx.filter = 'blur(14px)';
+        ctx.filter = 'blur(12px)';
         ctx.fillStyle = 'rgba(0,0,0,1)';
         tracePath(ctx, LEFT_EYE_REGION.map(function(i){ return lm[i]; }), W, H);
         ctx.fill();
         tracePath(ctx, RIGHT_EYE_REGION.map(function(i){ return lm[i]; }), W, H);
         ctx.fill();
         ctx.restore();
-        // 3. 合成到主畫布：soft-light 讓顏色和膚色自然融合
         canvasCtx.save();
         canvasCtx.globalCompositeOperation = 'soft-light';
-        canvasCtx.globalAlpha = 0.35;
+        canvasCtx.globalAlpha = 0.6;
         canvasCtx.drawImage(off, 0, 0);
         canvasCtx.restore();
     }
 
+    // ✅ 透明度調低，只蓋眼皮範圍，自然不搶眼
     function drawEye(lm, W, H, hexColor) {
         var rgb = hexToRgb(hexColor);
         var regions = [
@@ -393,28 +390,21 @@
             RIGHT_EYE_SHADOW.map(function(i){ return lm[i]; })
         ];
         regions.forEach(function(pts) {
-            var eyeOff = document.createElement('canvas');
-            eyeOff.width = W; eyeOff.height = H;
-            var eCtx = eyeOff.getContext('2d');
-            // 寬模糊外暈（自然暈染感）
-            eCtx.save();
-            eCtx.filter = 'blur(18px)';
-            eCtx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.7)';
-            tracePath(eCtx, pts, W, H);
-            eCtx.fill();
-            eCtx.restore();
-            // 窄模糊內層（加深眼線附近）
-            eCtx.save();
-            eCtx.filter = 'blur(7px)';
-            eCtx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.5)';
-            tracePath(eCtx, pts, W, H);
-            eCtx.fill();
-            eCtx.restore();
-            // multiply 讓眼影和眼皮膚色疊加，不會蓋掉眼白
             canvasCtx.save();
+            canvasCtx.filter = 'blur(16px)';
             canvasCtx.globalCompositeOperation = 'multiply';
-            canvasCtx.globalAlpha = 0.28;
-            canvasCtx.drawImage(eyeOff, 0, 0);
+            canvasCtx.globalAlpha = 0.22;
+            canvasCtx.fillStyle = 'rgb(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ')';
+            tracePath(canvasCtx, pts, W, H);
+            canvasCtx.fill();
+            canvasCtx.restore();
+            canvasCtx.save();
+            canvasCtx.filter = 'blur(6px)';
+            canvasCtx.globalCompositeOperation = 'multiply';
+            canvasCtx.globalAlpha = 0.15;
+            canvasCtx.fillStyle = 'rgb(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ')';
+            tracePath(canvasCtx, pts, W, H);
+            canvasCtx.fill();
             canvasCtx.restore();
         });
     }
@@ -425,31 +415,24 @@
             UPPER_LIP.map(function(i){ return lm[i]; }),
             LOWER_LIP.map(function(i){ return lm[i]; })
         ];
-        var lipOff = document.createElement('canvas');
-        lipOff.width = W; lipOff.height = H;
-        var lCtx = lipOff.getContext('2d');
         parts.forEach(function(pts) {
-            // 主色層：邊緣稍微模糊讓輪廓自然
-            lCtx.save();
-            lCtx.filter = 'blur(2px)';
-            lCtx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.9)';
-            tracePath(lCtx, pts, W, H);
-            lCtx.fill();
-            lCtx.restore();
-            // 外暈層：讓嘴唇邊緣柔和
-            lCtx.save();
-            lCtx.filter = 'blur(7px)';
-            lCtx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.4)';
-            tracePath(lCtx, pts, W, H);
-            lCtx.fill();
-            lCtx.restore();
+            canvasCtx.save();
+            canvasCtx.filter = 'blur(2px)';
+            canvasCtx.globalCompositeOperation = 'multiply';
+            canvasCtx.globalAlpha = 0.6;
+            canvasCtx.fillStyle = 'rgb(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ')';
+            tracePath(canvasCtx, pts, W, H);
+            canvasCtx.fill();
+            canvasCtx.restore();
+            canvasCtx.save();
+            canvasCtx.filter = 'blur(6px)';
+            canvasCtx.globalCompositeOperation = 'multiply';
+            canvasCtx.globalAlpha = 0.22;
+            canvasCtx.fillStyle = 'rgb(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ')';
+            tracePath(canvasCtx, pts, W, H);
+            canvasCtx.fill();
+            canvasCtx.restore();
         });
-        // multiply 讓唇色和嘴唇膚色疊加，顏色自然不浮
-        canvasCtx.save();
-        canvasCtx.globalCompositeOperation = 'multiply';
-        canvasCtx.globalAlpha = 0.55;
-        canvasCtx.drawImage(lipOff, 0, 0);
-        canvasCtx.restore();
     }
 
     function drawProportionGuides(lm, W, H) {
